@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+Build and Push Docker Image
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       - name: Log in to DockerHub (for caching)
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ secrets.GHCR_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to GitHub Container Registry
@@ -28,16 +28,22 @@ jobs:
           username: ${{ secrets.GHCR_USERNAME }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Build image with cache and multiarch
-        uses: docker/build-push-action@v5
+      - name: Cache from DockerHub
+        uses: actions/cache@v3
         with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ secrets.GHCR_USERNAME }}/weather-app:latest
-          cache-from: type=registry,ref=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/weather-cache:cache
-          cache-to: type=registry,ref=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/weather-cache:cache,mode=max
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build image with cache and multiarch
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --cache-from=type=registry,ref=docker.io/${{ secrets.GHCR_USERNAME }}/weather-cache:cache \
+            --cache-to=type=registry,ref=docker.io/${{ secrets.GHCR_USERNAME }}/weather-cache:cache,mode=max \
+            -t ghcr.io/${{ secrets.GHCR_USERNAME }}/weather-app:latest \
+            --push .
 
       - name: Install Trivy
         run: |
