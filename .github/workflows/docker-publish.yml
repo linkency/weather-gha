@@ -1,0 +1,60 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to DockerHub (for caching)
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Cache from DockerHub
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build image with cache and multiarch
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --cache-from=type=registry,ref=docker.io/${{ secrets.GHCR_USERNAME }}/weather-cache:cache \
+            --cache-to=type=registry,ref=docker.io/${{ secrets.GHCR_USERNAME }}/weather-cache:cache,mode=max \
+            -t ghcr.io/${{ secrets.GHCR_USERNAME }}/weather-app:latest \
+            --push .
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Scan image with Trivy (fail on HIGH or CRITICAL)
+        run: |
+          trivy image --exit-code 1 --severity HIGH,CRITICAL ghcr.io/${{ secrets.GHCR_USERNAME }}/weather-app:latest
+
+      - name: Sign image with cosign using OIDC
+        run: |
+          cosign sign --yes ghcr.io/${{ secrets.GHCR_USERNAME }}/weather-app:latest
+        env:
+          COSIGN_EXPERIMENTAL: "true"
