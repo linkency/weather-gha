@@ -1,34 +1,31 @@
-# Tworzę obraz bazowy do budowania aplikacji
-FROM php:8.1-cli AS builder
+#Obraz końcowy
+FROM php:8.2-cli
 
-# Tworzę katalog roboczy w kontenerze
+# Dane autora zgodnie z OCI
+LABEL org.opencontainers.image.title="Weather App" \
+      org.opencontainers.image.description="Prosta aplikacja pogodowa w PHP" \
+      org.opencontainers.image.authors="Svitlana Lysiuk <svitlllanalysiuk@gmail.com>" \
+      org.opencontainers.image.version="1.0"
+
+# Utworzenie katalogu aplikacji
 WORKDIR /app
 
-# Kopiuję wszystkie pliki do kontenera
-COPY . .
+# Skopiowanie plików aplikacji
+COPY index.php .
+COPY data.php .
+COPY entrypoint.sh .
+COPY style.css .
+COPY logs/ ./logs/
 
-# Zrobiłam plik entrypoint.sh wykonywalnym
-RUN chmod +x entrypoint.sh
+# Nadanie praw do skryptu uruchamiającego
+RUN chmod +x entrypoint.sh && chmod 777 logs
 
+# Otworzenie portu aplikacji
+EXPOSE 8000
 
-# Tworzę końcowy obraz aplikacji
-FROM php:8.1-cli
+# Sprawdzenie zdrowia kontenera
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl --fail http://localhost:8000 || exit 1
 
-# Dodaję informację o autorze
-LABEL org.opencontainers.image.authors="Svitlana Lysiuk"
-
-# Tworzę katalog roboczy
-WORKDIR /app
-
-# Kopiuję zbudowaną aplikację z etapu builder
-COPY --from=builder /app /app
-
-# Sprawdzam, czy aplikacja działa na porcie 8000
-HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000 || exit 1
-
-# Ustawiam skrypt startowy aplikacji
+# Polecenie startowe
 ENTRYPOINT ["./entrypoint.sh"]
-
-# Uruchamiam wbudowany serwer PHP na porcie 8000
-CMD ["php", "-S", "0.0.0.0:8000", "index.php"]
-
